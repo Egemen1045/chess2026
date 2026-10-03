@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Satranç Bulmacaları</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<style>
+:root{--bg:#f4f4f2;--fg:#1c1c1c;--card:#fff;--line:#d6d6d2;--accent:#3893e8;--ok:#1f8a3b;--bad:#c02a2a;--muted:#666;
+ --bl:#f0d9b5;--bd:#b58863}
+:root[data-theme="dark"]{--bg:#161512;--fg:#e6e6e3;--card:#262421;--line:#3c3a37;--accent:#3893e8;--ok:#6cc04a;--bad:#ef6a6a;--muted:#a0a09b}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--card)}
+header h1{font-size:17px;margin:0;font-weight:600}
+header .score{justify-self:end;font-weight:600}
+header button{justify-self:start}
+button,input,select{font:inherit;color:var(--fg)}
+button{background:var(--card);border:1px solid var(--line);padding:8px 14px;border-radius:4px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:disabled{opacity:.45;cursor:default}
+input,select{background:var(--card);border:1px solid var(--line);padding:8px 10px;border-radius:4px}
+input{width:140px}
+select{max-width:100%}
+main{max-width:560px;margin:0 auto;padding:14px}
+.info{display:flex;justify-content:space-between;color:var(--muted);font-size:14px;margin-bottom:8px;flex-wrap:wrap;gap:4px}
+
+#board{display:grid;grid-template-columns:repeat(8,1fr);width:100%;aspect-ratio:1;user-select:none;-webkit-user-select:none;touch-action:manipulation;border-radius:2px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.3)}
+.sq{position:relative;cursor:pointer;min-width:0;min-height:0}
+.sq.l{background:var(--bl)}.sq.d{background:var(--bd)}
+.sq.last::before,.sq.sel::before,.sq.wrong::before{content:"";position:absolute;inset:0;z-index:1}
+.sq.last::before{background:rgba(155,199,0,.41)}
+.sq.sel::before{background:rgba(20,85,30,.5)}
+.sq.wrong::before{background:rgba(220,40,40,.6)}
+.sq.check::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(255,0,0,1) 0%,rgba(231,0,0,1) 25%,rgba(169,0,0,0) 89%,rgba(158,0,0,0) 100%)}
+.hint{position:absolute;left:50%;top:50%;width:32%;height:32%;transform:translate(-50%,-50%);border-radius:50%;background:rgba(20,85,30,.55);z-index:3;pointer-events:none}
+.hint.cap{width:94%;height:94%;background:transparent;box-shadow:inset 0 0 0 clamp(3px,.9vw,6px) rgba(20,85,30,.55)}
+.sq.tgt:hover::before{content:"";position:absolute;inset:0;background:rgba(20,85,30,.3);z-index:1}
+.sq img{position:absolute;inset:6% 6% 4% 6%;width:88%;height:90%;z-index:2;pointer-events:none;-webkit-user-drag:none;filter:drop-shadow(0 1.5px 1.5px rgba(0,0,0,.35))}
+.co{position:absolute;font-size:clamp(8px,2.2vw,11px);font-weight:700;line-height:1;z-index:1;pointer-events:none}
+.co.r{top:3px;left:3px}.co.f{bottom:2px;right:3px}
+.l .co{color:var(--bd)}.d .co{color:var(--bl)}
+
+#status{margin:14px 0 6px;min-height:24px;font-weight:600}
+#status.ok{color:var(--ok)}#status.bad{color:var(--bad)}
+.dots{display:flex;gap:6px;margin-bottom:12px;align-items:center;color:var(--muted);font-size:14px}
+.dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--line)}
+.dot.used{background:var(--bad);border-color:var(--bad)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.muted{color:var(--muted);font-size:13px;line-height:1.5}
+footer{max-width:560px;margin:0 auto;padding:6px 14px 24px}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <button id="themeBtn">Tema: Açık</button>
+  <h1>Satranç Bulmacaları</h1>
+  <div class="score">Puan: <span id="score">0</span></div>
+</header>
+<main>
+  <div class="info"><span id="pid">-</span><span id="prating"></span><span id="psrc"></span></div>
+  <div id="board"></div>
+  <div id="status"></div>
+  <div class="dots"><span>Hata:</span><span class="dot" id="d0"></span><span class="dot" id="d1"></span><span class="dot" id="d2"></span></div>
+  <div class="row">
+    <select id="levelSel">
+      <option value="orta">Zorluk: Orta (1400+)</option>
+      <option value="zor">Zorluk: Zor (1800+)</option>
+      <option value="cokzor">Zorluk: Çok zor (2100+)</option>
+      <option value="uzman">Zorluk: Uzman (2400+)</option>
+    </select>
+    <select id="angleSel">
+      <option value="mix">Konu: Karışık</option>
+      <option value="mate">Konu: Mat</option>
+      <option value="mateIn2">Konu: 2 hamlede mat</option>
+      <option value="mateIn3">Konu: 3 hamlede mat</option>
+      <option value="fork">Konu: Çatal</option>
+      <option value="pin">Konu: Bağlama</option>
+      <option value="sacrifice">Konu: Fedakarlık</option>
+      <option value="deflection">Konu: Saptırma</option>
+      <option value="quietMove">Konu: Sessiz hamle</option>
+      <option value="endgame">Konu: Oyun sonu</option>
+      <option value="veryLong">Konu: Çok uzun</option>
+    </select>
+  </div>
+  <div class="row">
+    <button class="primary" id="nextBtn">Rastgele bulmaca</button>
+    <button id="solBtn">Çözümü göster</button>
+  </div>
+  <div class="row">
+    <input id="idIn" placeholder="Bulmaca ID" autocomplete="off" spellcheck="false">
+    <button id="goBtn">Git</button>
+    <select id="histSel"><option value="">Geçmiş bulmacalar</option></select>
+  </div>
+  <p class="muted">İlk denemede doğru 5, ikincide 3, üçüncüde 1 puan. Üç hatadan sonra çözüm gösterilir. Aynı bulmacadan puan yalnızca bir kez alınır.</p>
+  <div class="row"><button id="resetBtn">İlerlemeyi sıfırla</button></div>
+</main>
+<footer class="muted">Bulmacalar: Lichess (lichess.org, CC0). Taşlar: cburnett, Colin M.L. Burnett (GPLv2+ / CC BY-SA 3.0), Lichess üzerinden.</footer>
+
+<script>
+/* ---------- Ayarlar ---------- */
+var API = "https://lichess.org/api/puzzle/";
+var PIECE_BASE = "/lichess-org/lila@04febbd6abab376788cadf79af63d78193fa24a6/public/piece/cburnett/";
+var CSV_FILE = "puzzles.csv"; /* Lichess CSV formatı; internet/API yoksa yedek olarak kullanılır (isteğe bağlı) */
+var FALLBACK = [
+ "demo0001,6k1/5ppp/2n5/8/8/8/5PPP/3R2K1 b - - 0 1,c6b4 d1d8,600,0,0,0,mateIn1",
+ "demo0002,r1bqkbnr/pppp1ppp/2n5/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 3 3,g8f6 h5f7,500,0,0,0,mateIn1"
+];
+
+var KEY = "satranc_bulmaca_v2";
+var state = load();
+var localLines = null;
+var game, cur, moves, idx, mistakes, solverColor, selected = null, lastMove = null, busy = true, finished = false, runId = 0;
+
+function load(){
+  try{ var s = JSON.parse(localStorage.getItem(KEY)); if(s && s.done) return s; }catch(e){}
+  return {score:0, done:{}, hist:[], theme:(window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light", last:""};
+}
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
+
+/* ---------- Tema ---------- */
+function applyTheme(){
+  document.documentElement.setAttribute("data-theme", state.theme);
+  document.getElementById("themeBtn").textContent = "Tema: " + (state.theme === "dark" ? "Koyu" : "Açık");
+}
+document.getElementById("themeBtn").onclick = function(){ state.theme = state.theme === "dark" ? "light" : "dark"; save(); applyTheme(); };
+
+/* ---------- Taşlar: Lichess cburnett, olmazsa kendi çizimimiz ---------- */
+var SHAPES = {
+ p:'<circle cx="22.5" cy="14" r="5.5"/><path d="M15 34c0-8 3-10 7.5-12 4.5 2 7.5 4 7.5 12z"/><rect x="12" y="34" width="21" height="3.5" rx="1"/>',
+ r:'<path d="M12 37V31h21v6zM14 31V17h17v14zM12 17V9h4v3h4V9h5v3h4V9h4v8z"/>',
+ n:'<path d="M12 37c0-8 2-13 7-17-3-1-5-3-5-6l7-5c3-3 8-1 11 3 4 5 5 14 4 25z"/><circle cx="21" cy="14" r="1.4" fill="EYE" stroke="none"/>',
+ b:'<circle cx="22.5" cy="9" r="2.6"/><path d="M22.5 11c-7 5-9 10-6 15h12c3-5 1-10-6-15z"/><path d="M13 37c0-6 4-9 9.5-9s9.5 3 9.5 9z"/>',
+ q:'<path d="M10 14l5 12h15l5-12-6 6-1.5-8-4 8-4-8-1.5 8z"/><path d="M13 26h19v4H13zM11 37c0-4 3-7 11.5-7S34 33 34 37z"/>',
+ k:'<path d="M21 4h3v4h4v3h-4v4h-3v-4h-4V8h4z"/><path d="M22.5 17c-8 0-12 5-10 11h20c2-6-2-11-10-11z"/><path d="M11 37c0-4 3-7 11.5-7S34 33 34 37z"/>'
+};
+function drawnURI(type, color){
+  var f = color === "w" ? "#f7f7f7" : "#2a2a2a", s = color === "w" ? "#1a1a1a" : "#f0f0f0";
+  var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="'+f+'" stroke="'+s+'" stroke-width="1.3" stroke-linejoin="round">'+SHAPES[type].replace("EYE", s)+'</g></svg>';
+  return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+}
+function pieceUrls(type, color){
+  var file = color + type.toUpperCase() + ".svg";
+  return [
+    "https://cdn.jsdelivr.net/gh" + PIECE_BASE + file,
+    "https://raw.githubusercontent.com" + PIECE_BASE.replace("@", "/") + file,
+    "https://chessboardjs.com/img/chesspieces/wikipedia/" + color + type.toUpperCase() + ".png",
+    "https://lichess1.org/assets/piece/cburnett/" + file,
+    drawnURI(type, color)
+  ];
+}
+var URLS = {};
+"pnbrqk".split("").forEach(function(t){ ["w","b"].forEach(function(c){ URLS[c+t] = pieceUrls(t, c); new Image().src = URLS[c+t][0]; }); });
+
+/* ---------- Tahta ---------- */
+var boardEl = document.getElementById("board");
+boardEl.addEventListener("error", function(e){
+  var img = e.target; if(img.tagName !== "IMG") return;
+  var list = URLS[img.getAttribute("data-p")]; var st = +img.getAttribute("data-st") + 1;
+  if(st < list.length){ img.setAttribute("data-st", st); img.src = list[st]; }
+}, true);
+
+function sqName(f, r){ return "abcdefgh"[f] + (r + 1); }
+
+function render(wrongSq, hints){
+  var b = game.board();
+  var flip = solverColor === "b";
+  var checkSq = null;
+  if(game.in_check()){
+    for(var a = 0; a < 8; a++) for(var c = 0; c < 8; c++){
+      var x = b[a][c]; if(x && x.type === "k" && x.color === game.turn()) checkSq = sqName(c, 7 - a);
+    }
+  }
+  var html = "";
+  for(var i = 0; i < 8; i++){
+    for(var j = 0; j < 8; j++){
+      var r = flip ? i : 7 - i;
+      var f = flip ? 7 - j : j;
+      var name = sqName(f, r);
+      var pc = b[7 - r][f];
+      var cls = "sq " + (((f + r) % 2 === 0) ? "d" : "l");
+      if(lastMove && (lastMove.from === name || lastMove.to === name)) cls += " last";
+      if(selected === name) cls += " sel";
+      if(wrongSq === name) cls += " wrong";
+      if(checkSq === name) cls += " check";
+      if(hints && hints[name]) cls += " tgt";
+      html += '<div class="'+cls+'" data-sq="'+name+'">';
+      if(j === 0) html += '<span class="co r">'+(r+1)+'</span>';
+      if(i === 7) html += '<span class="co f">'+"abcdefgh"[f]+'</span>';
+      if(hints && hints[name]) html += '<i class="hint'+(hints[name] === 2 ? ' cap' : '')+'"></i>';
+      if(pc){ var k = pc.color + pc.type; html += '<img draggable="false" data-p="'+k+'" data-st="0" src="'+URLS[k][0]+'" alt="">'; }
+      html += '</div>';
+    }
+  }
+  boardEl.innerHTML = html;
+}
+
+boardEl.addEventListener("click", function(e){
+  if(busy || finished) return;
+  var el = e.target.closest(".sq"); if(!el) return;
+  var sq = el.getAttribute("data-sq");
+  var pc = game.get(sq);
+  if(selected){
+    if(selected === sq){ selected = null; render(); return; }
+    if(pc && pc.color === solverColor){ select(sq); return; }
+    tryMove(selected, sq);
+    return;
+  }
+  if(pc && pc.color === solverColor) select(sq);
+});
+
+function select(sq){
+  selected = sq;
+  var h = {};
+  game.moves({square: sq, verbose: true}).forEach(function(m){ h[m.to] = (m.captured || m.flags.indexOf("e") >= 0) ? 2 : 1; });
+  render(null, h);
+}
+
+/* ---------- Bulmaca verisi ---------- */
+function fromApi(j){
+  var g = new Chess();
+  var toks = j.game.pgn.trim().split(/\s+/);
+  for(var i = 0; i < toks.length; i++){ if(!g.move(toks[i], {sloppy:true})) throw new Error("pgn"); }
+  var last = g.undo();
+  if(!last) throw new Error("pgn");
+  return {
+    id: j.puzzle.id,
+    rating: j.puzzle.rating,
+    fen: g.fen(),
+    moves: [last.from + last.to + (last.promotion || "")].concat(j.puzzle.solution),
+    src: "Lichess"
+  };
+}
+function fromLine(l){
+  var a = l.split(",");
+  return {id:a[0], fen:a[1], moves:a[2].trim().split(/\s+/), rating:a[3], src:"Yerel"};
+}
+function getJson(path){
+  return fetch(API + path, {headers:{"Accept":"application/json"}})
+    .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); });
+}
+function fetchApi(path){ return getJson(path).then(fromApi); }
+
+var LEVELS = {
+  orta:   {min:1400, diff:"normal"},
+  zor:    {min:1800, diff:"harder"},
+  cokzor: {min:2100, diff:"hardest"},
+  uzman:  {min:2400, diff:"hardest"}
+};
+var queue = [], queueKey = "";
+function okPuzzle(p, min){ return p.rating >= min && state.done[p.id] === undefined && p.id !== state.last; }
+
+/* Lichess toplu bulmaca ucu: tek istekte 30 bulmaca gelir, zorluğa göre süzülür */
+function fillQueue(){
+  var lv = LEVELS[state.level] || LEVELS.zor, angle = state.angle || "mix";
+  var key = state.level + "|" + angle;
+  if(key !== queueKey){ queue = []; queueKey = key; }
+  var rounds = 0, best = null;
+  return (function round(){
+    return getJson("batch/" + encodeURIComponent(angle) + "?nb=30&difficulty=" + lv.diff).then(function(j){
+      (j.puzzles || []).forEach(function(x){
+        var p; try{ p = fromApi(x); }catch(e){ return; }
+        if(okPuzzle(p, lv.min)) queue.push(p);
+        else if(state.done[p.id] === undefined && p.id !== state.last && (!best || p.rating > best.rating)) best = p;
+      });
+      if(queue.length || ++rounds >= 5) return;
+      return round();
+    });
+  })().then(function(){
+    if(!queue.length && best) queue.push(best);
+    if(!queue.length) throw new Error("bos");
+  });
+}
+function nextFromApi(){
+  var lv = LEVELS[state.level] || LEVELS.zor;
+  var key = state.level + "|" + (state.angle || "mix");
+  if(key !== queueKey) { queue = []; queueKey = key; }
+  queue = queue.filter(function(p){ return state.done[p.id] === undefined && p.id !== state.last; });
+  if(queue.length) return Promise.resolve(queue.shift());
+  return fillQueue().then(function(){ return queue.shift(); }).catch(function(){
+    /* toplu uç çalışmazsa tekli uca dön */
+    var tries = 0;
+    return (function attempt(){
+      var q = "next?difficulty=" + lv.diff + ((state.angle && state.angle !== "mix") ? "&angle=" + encodeURIComponent(state.angle) : "");
+      return fetchApi(q).then(function(p){
+        if(!okPuzzle(p, lv.min) && ++tries < 15) return attempt();
+        return p;
+      });
+    })();
+  });
+}
+function getLocal(){
+  if(localLines) return Promise.resolve(localLines);
+  return fetch(CSV_FILE).then(function(r){ if(!r.ok) throw 0; return r.text(); })
+    .then(function(t){ var a = t.split(/\r?\n/).filter(function(l){ return l && l.indexOf("PuzzleId") !== 0; }); if(!a.length) throw 0; return a; })
+    .catch(function(){ return FALLBACK; })
+    .then(function(a){ localLines = a; return a; });
+}
+function localById(id){
+  return getLocal().then(function(a){
+    for(var i = 0; i < a.length; i++) if(a[i].slice(0, a[i].indexOf(",")) === id) return fromLine(a[i]);
+    return null;
+  });
+}
+function localRandom(){
+  var min = (LEVELS[state.level] || LEVELS.zor).min;
+  return getLocal().then(function(a){
+    var fb = null;
+    for(var t = 0; t < 500; t++){
+      var l = a[Math.floor(Math.random() * a.length)];
+      var id = l.slice(0, l.indexOf(","));
+      if(state.done[id] !== undefined || id === state.last) continue;
+      if(+l.split(",")[3] >= min) return fromLine(l);
+      fb = fb || l;
+    }
+    return fromLine(fb || a[Math.floor(Math.random() * a.length)]);
+  });
+}
+
+function randomPuzzle(){
+  setLoading();
+  nextFromApi().then(startPuzzle).catch(function(){
+    localRandom().then(startPuzzle);
+  });
+}
+
+function idPuzzle(id){
+  setLoading();
+  fetchApi(encodeURIComponent(id)).then(startPuzzle).catch(function(){
+    localById(id).then(function(p){
+      if(p) return startPuzzle(p);
+      busy = false;
+      setStatus("Bu ID bulunamadı: " + id, "bad");
+    });
+  });
+}
+
+function setLoading(){
+  runId++; busy = true;
+  setStatus("Yükleniyor...");
+  document.getElementById("solBtn").disabled = true;
+}
+
+/* ---------- Bulmaca akışı ---------- */
+function setStatus(t, c){ var s = document.getElementById("status"); s.textContent = t; s.className = c || ""; }
+function updateDots(){ for(var i = 0; i < 3; i++) document.getElementById("d"+i).className = "dot" + (i < mistakes ? " used" : ""); }
+function updateScore(){ document.getElementById("score").textContent = state.score; }
+
+function applyUci(u){
+  var m = game.move({from:u.slice(0,2), to:u.slice(2,4), promotion:u.length > 4 ? u[4] : undefined});
+  if(m) lastMove = {from:m.from, to:m.to};
+  return m;
+}
+
+function startPuzzle(p){
+  var my = ++runId;
+  cur = p;
+  game = new Chess(p.fen);
+  moves = p.moves;
+  idx = 0; mistakes = 0; selected = null; lastMove = null; finished = false; busy = true;
+  solverColor = game.turn() === "w" ? "b" : "w";
+  state.last = p.id;
+  state.hist = [p.id].concat((state.hist || []).filter(function(x){ return x !== p.id; })).slice(0, 300);
+  save(); fillHist();
+  document.getElementById("pid").textContent = "ID: " + p.id;
+  document.getElementById("prating").textContent = p.rating ? "Zorluk: " + p.rating : "";
+  document.getElementById("psrc").textContent = p.src;
+  document.getElementById("idIn").value = "";
+  document.getElementById("solBtn").disabled = true;
+  updateDots();
+  render();
+  setStatus("Hazırlanıyor...");
+  setTimeout(function(){
+    if(my !== runId) return;
+    applyUci(moves[idx++]);
+    render();
+    busy = false;
+    setStatus((solverColor === "w" ? "Beyaz" : "Siyah") + " oynuyor. En iyi hamleyi bul.");
+    document.getElementById("solBtn").disabled = false;
+  }, 600);
+}
+
+function tryMove(from, to){
+  var my = runId;
+  var expected = moves[idx];
+  var legal = game.moves({square: from, verbose: true}).filter(function(m){ return m.to === to; });
+  if(!legal.length){ selected = null; render(); return; }
+  var promo = null;
+  if(legal[0].promotion){ promo = (expected.length > 4 && expected.slice(0,4) === from + to) ? expected[4] : "q"; }
+  var m = game.move({from:from, to:to, promotion: promo || undefined});
+  selected = null;
+  var uci = from + to + (promo || "");
+  if(m && (uci === expected || game.in_checkmate())){
+    lastMove = {from:from, to:to};
+    idx++;
+    render();
+    if(game.in_checkmate() || idx >= moves.length){ return solved(); }
+    busy = true;
+    setStatus("Doğru. Devam et.", "ok");
+    setTimeout(function(){
+      if(my !== runId) return;
+      applyUci(moves[idx++]);
+      render();
+      busy = false;
+      if(idx >= moves.length) return solved();
+      setStatus("Sıra sende.");
+    }, 450);
+  } else {
+    if(m) game.undo();
+    mistakes++;
+    updateDots();
+    render(to);
+    busy = true;
+    if(mistakes >= 3){
+      if(state.done[cur.id] === undefined){ state.done[cur.id] = 0; save(); fillHist(); }
+      setStatus("Üç hata yapıldı. Çözüm gösteriliyor.", "bad");
+      setTimeout(function(){ if(my === runId) showSolution(); }, 900);
+    } else {
+      setStatus("Yanlış hamle. Kalan hak: " + (3 - mistakes), "bad");
+      setTimeout(function(){ if(my !== runId) return; render(); busy = false; }, 600);
+    }
+  }
+}
+
+function solved(){
+  finished = true; busy = true;
+  var pts = [5, 3, 1][mistakes];
+  if(state.done[cur.id] === undefined){
+    state.done[cur.id] = pts; state.score += pts; save(); updateScore(); fillHist();
+    setStatus("Çözüldü. +" + pts + " puan", "ok");
+  } else {
+    setStatus("Çözüldü. Bu bulmacadan daha önce puan alınmış.", "ok");
+  }
+  document.getElementById("solBtn").disabled = true;
+}
+
+function showSolution(){
+  var my = runId;
+  finished = true; busy = true;
+  document.getElementById("solBtn").disabled = true;
+  if(state.done[cur.id] === undefined){ state.done[cur.id] = 0; save(); fillHist(); }
+  game = new Chess(cur.fen);
+  lastMove = null; selected = null;
+  applyUci(moves[0]);
+  render();
+  var i = 1;
+  setStatus("Çözüm: " + moves.slice(1).join(" "));
+  (function step(){
+    if(i >= moves.length) return;
+    setTimeout(function(){ if(my !== runId) return; applyUci(moves[i++]); render(); step(); }, 800);
+  })();
+}
+
+document.getElementById("solBtn").onclick = function(){
+  if(finished || busy) return;
+  mistakes = 3; updateDots();
+  showSolution();
+};
+
+/* ---------- Menü ve seçim ---------- */
+function fillHist(){
+  var sel = document.getElementById("histSel");
+  var h = '<option value="">Geçmiş bulmacalar</option>';
+  (state.hist || []).forEach(function(id){
+    var d = state.done[id];
+    var t = d === undefined ? "oynanıyor" : (d > 0 ? "+" + d + " puan" : "çözülemedi");
+    h += '<option value="'+id+'">'+id+' - '+t+'</option>';
+  });
+  sel.innerHTML = h;
+}
+document.getElementById("histSel").onchange = function(){
+  if(this.value) idPuzzle(this.value);
+};
+document.getElementById("nextBtn").onclick = randomPuzzle;
+var lvSel = document.getElementById("levelSel"), anSel = document.getElementById("angleSel");
+lvSel.value = state.level = LEVELS[state.level] ? state.level : "zor";
+anSel.value = state.angle = state.angle || "mix";
+lvSel.onchange = function(){ state.level = this.value; save(); randomPuzzle(); };
+anSel.onchange = function(){ state.angle = this.value; save(); randomPuzzle(); };
+document.getElementById("goBtn").onclick = goId;
+document.getElementById("idIn").addEventListener("keydown", function(e){ if(e.key === "Enter") goId(); });
+function goId(){
+  var v = document.getElementById("idIn").value.trim();
+  if(v) idPuzzle(v);
+}
+document.getElementById("resetBtn").onclick = function(){
+  if(!confirm("Puan ve çözülen bulmaca kayıtları silinecek. Emin misin?")) return;
+  state.score = 0; state.done = {}; state.hist = []; state.last = ""; save(); updateScore(); fillHist(); randomPuzzle();
+};
+
+/* ---------- Başlangıç ---------- */
+applyTheme(); updateScore(); fillHist();
+game = new Chess(); solverColor = "w"; render();
+randomPuzzle();
+</script>
+</body>
+</html>
